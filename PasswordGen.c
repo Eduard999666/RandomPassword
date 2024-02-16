@@ -3,71 +3,102 @@
 #include <string.h>
 #include <time.h>
 
-int main() {
-// Generate password
-    unsigned int seed = (unsigned int)time(NULL);
-    seed *= 1103515245 + 12345;
+#define MIN_PASSWORD_LENGTH 12
+#define MAX_PASSWORD_LENGTH 20
+#define CHARSET_LENGTH 75
+#define COMMON_FILENAME "CommonPasswd.txt"
+#define GENERATED_FILENAME "GeneratedPasswd.txt"
+
+char* generatePassword() {
     const char charset[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$^&*()_=+[]{}|;:,.<>?";
-    int minlength = 12;
-    unsigned int length = minlength + seed % 5;
-// Dynamically allocate memory for the generated password
-    char *generatedPassword = (char*)malloc((length + 1) * sizeof(char));  // +1 for null terminator
+    const char uppercase[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const char lowercase[] = "abcdefghijklmnopqrstuvwxyz";
+    const char numbers[] = "0123456789";
+    const char symbols[] = "!@#$^&*()_=+[]{}|;:,.<>?";
+    int length = MIN_PASSWORD_LENGTH + rand() % (MAX_PASSWORD_LENGTH - MIN_PASSWORD_LENGTH + 1);
+
+    char *generatedPassword = (char *)malloc((length + 1) * sizeof(char));
     if (generatedPassword == NULL) {
         fprintf(stderr, "Memory allocation failed\n");
-        return 1;
+        exit(1);
     }
-    for (unsigned int i = 0; i < length; i++) {
-        unsigned int index = seed % (sizeof(charset) - 1);
-        generatedPassword[i] = charset[index];
+
+// Assign the first four characters based on the patterns
+    generatedPassword[0] = uppercase[rand() % strlen(uppercase)];
+    generatedPassword[1] = lowercase[rand() % strlen(lowercase)];
+    generatedPassword[2] = numbers[rand() % strlen(numbers)];
+    generatedPassword[3] = symbols[rand() % strlen(symbols)];
+
+// Assign the rest of the characters randomly from the charset
+    for (int i = 4; i < length; i++) {
+        generatedPassword[i] = charset[rand() % CHARSET_LENGTH];
     }
-    generatedPassword[length] = '\0';  // Null-terminate the string
-// Print generated password
-    printf("Generated Password Length: %u\n", length);
-    printf("Generated Password: %s\n", generatedPassword);
-// Open and append generated password to GeneratedPasswd.txt
-    FILE *generatedFile = fopen("GeneratedPasswd.txt", "a");
-    if (generatedFile == NULL) {
-        fprintf(stderr, "Error opening GeneratedPasswd.txt\n");
-        free(generatedPassword);  // Free allocated memory before returning
-        return 1;
+    generatedPassword[length] = '\0';
+
+// Shuffle the password to randomize the order
+    for (int i = length - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        char temp = generatedPassword[i];
+        generatedPassword[i] = generatedPassword[j];
+        generatedPassword[j] = temp;
     }
-    fprintf(generatedFile, "Generated Password Length: %u\n", length);
-    fprintf(generatedFile, "Generated Password: %s\n", generatedPassword);
-    fclose(generatedFile);
-// Measure time before comparison
-    clock_t start_time = clock();
-// Open CommonPasswd.txt for reading
-    FILE *commonFile = fopen("CommonPasswd.txt", "r");
-    if (commonFile == NULL) {
-        fprintf(stderr, "Error opening CommonPasswd.txt\n");
-        free(generatedPassword);  // Free allocated memory before returning
-        return 1;
+
+    return generatedPassword;
+}
+
+void savePasswordToFile(const char *password, const char *filename) {
+    FILE *file = fopen(filename, "a");
+    if (file == NULL) {
+        fprintf(stderr, "Error opening %s\n", filename);
+        exit(1);
     }
-// Read each line from CommonPasswd.txt and compare with generated password
-    char commonLine[100];  // Assuming maximum line length is 100 characters
-    int matchFound = 0; // Flag to indicate if a match is found
-    while (fgets(commonLine, sizeof(commonLine), commonFile) != NULL) {
-        // Remove newline character
-        commonLine[strcspn(commonLine, "\n")] = '\0';
-        // Compare generated password with common password
-        if (strcmp(generatedPassword, commonLine) == 0) {
-            printf("Generated password matches a common password in CommonPasswd.txt: %s\n", commonLine);
-            matchFound = 1;
-            break;  // Exit loop if match found
+    fprintf(file, "Generated Password Length: %zu\n", strlen(password));
+    fprintf(file, "Generated Password: %s\n", password);
+    fclose(file);
+}
+
+int isPasswordCommon(const char *password, const char *commonFilename) {
+    FILE *file = fopen(commonFilename, "r");
+    if (file == NULL) {
+        fprintf(stderr, "Error opening %s\n", commonFilename);
+        exit(1);
+    }
+
+    char commonLine[MAX_PASSWORD_LENGTH];
+    while (fgets(commonLine, sizeof(commonLine), file) != NULL) {
+        commonLine[strcspn(commonLine, "\n")] = '\0'; // Remove newline character
+        if (strcmp(password, commonLine) == 0) {
+            fclose(file);
+            return 1;
         }
     }
-// Print password strength
-    if (matchFound) {
+
+    fclose(file);
+    return 0;
+}
+
+int main() {
+    srand(time(NULL)); // Seed the random number generator
+
+    clock_t start_time = clock();
+
+    char *password = generatePassword();
+    printf("Generated Password: %s\n", password);
+
+    savePasswordToFile(password, GENERATED_FILENAME);
+
+    int weak = isPasswordCommon(password, COMMON_FILENAME);
+
+    double elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+    printf("Time taken for comparison: %.6f seconds\n", elapsed_time);
+
+    if (weak) {
         printf("The generated password is weak.\n");
     } else {
         printf("The generated password is strong.\n");
     }
-// Measure time after comparison
-    clock_t end_time = clock();
-    double elapsed_time = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-    printf("Time taken for comparison: %.6f seconds\n", elapsed_time);
-// Close CommonPasswd.txt
-    fclose(commonFile);
-// Do not free allocated memory to keep the generated passwords
+
+    free(password);
+
     return 0;
 }
